@@ -7,8 +7,8 @@ import crypto from "node:crypto";
  * Mantiq:
  *   secret_key = HMAC_SHA256(key = "WebAppData", data = bot_token)
  *   hash       = HMAC_SHA256(key = secret_key,  data = data_check_string)
- * bu yerda data_check_string - `hash` va `signature` dan tashqari barcha
- * maydonlar "kalit=qiymat" ko'rinishida, alifbo tartibida, "\n" bilan ulangan.
+ * bu yerda data_check_string - `hash` dan tashqari barcha maydonlar
+ * "kalit=qiymat" ko'rinishida, alifbo tartibida, "\n" bilan ulangan.
  */
 
 export interface TelegramUser {
@@ -32,33 +32,34 @@ export function verifyInitData(
 ): VerifyResult {
   if (!initData) return { ok: false, reason: "initData bo'sh" };
 
-  const params = new URLSearchParams(initData);
-  const hash = params.get("hash");
+  const pairs = parsePairs(initData);
+  const hash = pairs.find(([key]) => key === "hash")?.[1];
   if (!hash) return { ok: false, reason: "hash yo'q" };
-
-  // `hash` ning o'zi va Ed25519 `signature` data_check_string ga kirmaydi.
-  params.delete("hash");
-  params.delete("signature");
-
-  const dataCheckString = [...params.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([key, value]) => `${key}=${value}`)
-    .join("\n");
 
   const secretKey = crypto
     .createHmac("sha256", "WebAppData")
     .update(botToken)
     .digest();
-  const expected = crypto
-    .createHmac("sha256", secretKey)
-    .update(dataCheckString)
-    .digest("hex");
 
-  if (!timingSafeEqualHex(expected, hash)) {
-    return { ok: false, reason: "hash mos kelmadi" };
-  }
+  /**
+   * Telegram keyinchalik `signature` maydonini qo'shdi (u uchinchi tomon
+   * tekshiruvi uchun). Ba'zi mijozlar uni HMAC hisobiga qo'shadi, ba'zilari
+   * yo'q. Shuning uchun ikkala variantni ham sinaymiz - qaysi biri mos kelsa
+   * o'sha qabul qilinadi.
+   */
+  const withSignature = buildCheckString(pairs, ["hash"]);
+  const withoutSignature = buildCheckString(pairs, ["hash", "signature"]);
 
-  const authDate = Number(params.get("auth_date"));
+  const matched = [withSignature, withoutSignature].some((checkString) =>
+    timingSafeEqualHex(
+      crypto.createHmac("sha256", secretKey).update(checkString).digest("hex"),
+      hash,
+    ),
+  );
+
+  if (!matched) return { ok: false, reason: "hash mos kelmadi" };
+
+  const authDate = Number(pairs.find(([key]) => key === "auth_date")?.[1]);
   if (!Number.isFinite(authDate)) {
     return { ok: false, reason: "auth_date noto'g'ri" };
   }
@@ -66,7 +67,40 @@ export function verifyInitData(
     return { ok: false, reason: "initData eskirgan" };
   }
 
-  return { ok: true, user: parseUser(params.get("user")) };
+  const userRaw = pairs.find(([key]) => key === "user")?.[1];
+  return { ok: true, user: parseUser(userRaw) };
+}
+
+/**
+ * Query stringni qo'lda ajratamiz. `URLSearchParams` dan foydalanmaymiz,
+ * chunki u "+" ni probelga aylantiradi - Telegram esa probelni "%20" bilan
+ * kodlaydi, ya'ni haqiqiy "+" belgisi qiymat ichida bo'lishi mumkin.
+ */
+function parsePairs(initData: string): Array<[string, string]> {
+  const pairs: Array<[string, string]> = [];
+  for (const part of initData.split("&")) {
+    if (!part) continue;
+    const index = part.indexOf("=");
+    const rawKey = index === -1 ? part : part.slice(0, index);
+    const rawValue = index === -1 ? "" : part.slice(index + 1);
+    try {
+      pairs.push([decodeURIComponent(rawKey), decodeURIComponent(rawValue)]);
+    } catch {
+      pairs.push([rawKey, rawValue]); // noto'g'ri kodlangan - o'z holicha
+    }
+  }
+  return pairs;
+}
+
+function buildCheckString(
+  pairs: Array<[string, string]>,
+  exclude: string[],
+): string {
+  return pairs
+    .filter(([key]) => !exclude.includes(key))
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("\n");
 }
 
 function timingSafeEqualHex(a: string, b: string): boolean {
@@ -78,7 +112,7 @@ function timingSafeEqualHex(a: string, b: string): boolean {
   }
 }
 
-function parseUser(raw: string | null): TelegramUser | null {
+function parseUser(raw: string | undefined): TelegramUser | null {
   if (!raw) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
