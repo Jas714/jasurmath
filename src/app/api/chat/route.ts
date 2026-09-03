@@ -53,6 +53,16 @@ const SYSTEM_BLOCKS = [
 const client = new Anthropic();
 const encoder = new TextEncoder();
 
+/**
+ * Qaysi versiya productionda turganini bilish uchun belgi.
+ * Tekshirish: curl https://jasur-math.vercel.app/api/chat
+ */
+const BUILD_MARKER = "2026-09-04-initdata-2";
+
+export function GET() {
+  return Response.json({ app: "JasurMath", version: BUILD_MARKER });
+}
+
 export async function POST(request: NextRequest) {
   let body: unknown;
   try {
@@ -216,10 +226,17 @@ function authenticate(initData: string): AuthResult {
 
   const result = verifyInitData(initData, botToken);
   if (!result.ok) {
-    // Sabab maxfiy emas - u nosozlikni topishni osonlashtiradi.
+    // Sabab va maydon nomlari maxfiy emas - ular nosozlikni topishga yordam
+    // beradi (qiymatlar emas, faqat kalitlar ko'rsatiladi).
+    const fields = initData
+      .split("&")
+      .map((part) => part.split("=")[0])
+      .filter(Boolean)
+      .sort()
+      .join(", ");
     return {
       ok: false,
-      message: `Telegram tekshiruvi o'tmadi (${result.reason}).`,
+      message: `Telegram tekshiruvi o'tmadi (${result.reason}) [v${BUILD_MARKER}] [maydonlar: ${fields || "yo'q"}]`,
     };
   }
 
