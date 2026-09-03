@@ -27,9 +27,31 @@ export function getWebApp(): TelegramWebApp | null {
   return window.Telegram?.WebApp ?? null;
 }
 
+/**
+ * Telegram SDK skripti sahifa kodidan keyinroq yuklanishi mumkin.
+ * Shuning uchun `window.Telegram` paydo bo'lguncha kutamiz - aks holda
+ * initData bo'sh ketadi va server so'rovni rad etadi.
+ */
+export async function waitForWebApp(
+  timeoutMs = 3000,
+): Promise<TelegramWebApp | null> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const webApp = getWebApp();
+    if (webApp) return webApp;
+    if (Date.now() >= deadline) return null;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+/** Har so'rovda yangi initData olinadi (u vaqt o'tishi bilan yangilanadi). */
+export function getInitData(): string {
+  return getWebApp()?.initData ?? "";
+}
+
 /** Mini App ochilganda bir marta chaqiriladi. */
-export function initWebApp(): TelegramWebApp | null {
-  const webApp = getWebApp();
+export async function initWebApp(): Promise<TelegramWebApp | null> {
+  const webApp = await waitForWebApp();
   if (!webApp) return null;
 
   webApp.ready();

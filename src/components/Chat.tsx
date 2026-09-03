@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageBubble } from "@/components/MessageBubble";
 import { streamChat } from "@/lib/chat-client";
 import { parseReply } from "@/lib/options";
-import { hapticTap, initWebApp } from "@/lib/telegram-client";
+import { getInitData, hapticTap, initWebApp } from "@/lib/telegram-client";
 import {
   KICKOFF_MESSAGE,
   MAX_MESSAGE_CHARS,
@@ -33,7 +33,6 @@ export function Chat() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const initDataRef = useRef("");
   const startedRef = useRef(false);
   const messagesRef = useRef<UiMessage[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -68,7 +67,7 @@ export function Chat() {
     try {
       await streamChat({
         messages: history.map(({ role, content }) => ({ role, content })),
-        initData: initDataRef.current,
+        initData: getInitData(),
         signal: controller.signal,
         onText(chunk) {
           answer += chunk;
@@ -108,15 +107,17 @@ export function Chat() {
     if (startedRef.current) return;
     startedRef.current = true;
 
-    const webApp = initWebApp();
-    initDataRef.current = webApp?.initData ?? "";
+    void (async () => {
+      // Telegram SDK yuklanguncha kutamiz, keyingina birinchi so'rov ketadi.
+      await initWebApp();
 
-    const saved = loadMessages();
-    if (saved.length > 0) {
-      setMessages(saved);
-      return;
-    }
-    void send(KICKOFF_MESSAGE, true);
+      const saved = loadMessages();
+      if (saved.length > 0) {
+        setMessages(saved);
+        return;
+      }
+      void send(KICKOFF_MESSAGE, true);
+    })();
   }, [send]);
 
   // Suhbatni saqlab boramiz (oqim tugagandan keyin).

@@ -216,7 +216,11 @@ function authenticate(initData: string): AuthResult {
 
   const result = verifyInitData(initData, botToken);
   if (!result.ok) {
-    return { ok: false, message: "Telegram tekshiruvi o'tmadi." };
+    // Sabab maxfiy emas - u nosozlikni topishni osonlashtiradi.
+    return {
+      ok: false,
+      message: `Telegram tekshiruvi o'tmadi (${result.reason}).`,
+    };
   }
 
   return { ok: true, userKey: result.user ? `tg:${result.user.id}` : "tg:anon" };
