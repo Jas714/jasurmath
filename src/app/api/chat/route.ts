@@ -226,21 +226,30 @@ function authenticate(initData: string): AuthResult {
 
   const result = verifyInitData(initData, botToken);
   if (!result.ok) {
-    // Sabab va maydon nomlari maxfiy emas - ular nosozlikni topishga yordam
-    // beradi (qiymatlar emas, faqat kalitlar ko'rsatiladi).
-    const fields = initData
-      .split("&")
-      .map((part) => part.split("=")[0])
-      .filter(Boolean)
-      .sort()
-      .join(", ");
+    // Texnik tafsilot serverga yoziladi, foydalanuvchi sodda xabar ko'radi.
+    console.warn(
+      `initData tekshiruvi o'tmadi: ${result.reason}; maydonlar: ${fieldNames(initData)}`,
+    );
     return {
       ok: false,
-      message: `Telegram tekshiruvi o'tmadi (${result.reason}) [v${BUILD_MARKER}] [maydonlar: ${fields || "yo'q"}]`,
+      message:
+        "Telegram tekshiruvi o'tmadi. Ilovani yopib, botdan qayta oching.",
     };
   }
 
   return { ok: true, userKey: result.user ? `tg:${result.user.id}` : "tg:anon" };
+}
+
+/** Faqat kalit nomlari - qiymatlar (hash, user) logga tushmaydi. */
+function fieldNames(initData: string): string {
+  return (
+    initData
+      .split("&")
+      .map((part) => part.split("=")[0])
+      .filter(Boolean)
+      .sort()
+      .join(", ") || "yo'q"
+  );
 }
 
 function describeError(error: unknown): string {
