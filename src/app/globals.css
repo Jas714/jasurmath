@@ -351,3 +351,159 @@ body {
   opacity: 0.4;
   cursor: default;
 }
+
+/* ================= API hujjat sahifasi (/api) ================= */
+
+.docs {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 64px;
+}
+
+.docs h1 {
+  font-size: 28px;
+  margin: 0 0 6px;
+}
+
+.docs .lead {
+  color: var(--hint);
+  margin: 0 0 28px;
+}
+
+.docs h2 {
+  font-size: 19px;
+  margin: 34px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.docs h3 {
+  font-size: 15px;
+  margin: 20px 0 8px;
+}
+
+.docs p {
+  margin: 0 0 12px;
+}
+
+.docs code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  background: color-mix(in srgb, var(--hint) 20%, transparent);
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+
+.docs pre {
+  background: var(--secondary-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  overflow-x: auto;
+  margin: 0 0 14px;
+}
+
+.docs pre code {
+  background: none;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.docs table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  margin: 0 0 16px;
+}
+
+.docs th,
+.docs td {
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.docs th {
+  background: var(--secondary-bg);
+  font-weight: 600;
+}
+
+.method {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--button);
+  color: var(--button-text);
+}
+
+.method-get {
+  background: #2e9e5b;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+/* --- Sinov formasi --- */
+
+.tester {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--secondary-bg);
+}
+
+.tester-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tester input {
+  flex: 1;
+  min-width: 200px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 16px;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+
+.tester input:focus {
+  border-color: var(--button);
+}
+
+.tester button {
+  border: none;
+  border-radius: 9px;
+  padding: 10px 20px;
+  background: var(--button);
+  color: var(--button-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tester button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tester-hint {
+  font-size: 13px;
+  color: var(--hint);
+  margin: 10px 0 0;
+}
+
+.tester pre {
+  margin: 14px 0 0;
+  background: var(--bg);
+}

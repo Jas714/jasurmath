@@ -1,10 +1,10 @@
 /**
- * Juda oddiy, xotirada saqlanadigan token-bucket limiter.
+ * Xotirada saqlanadigan token-bucket limiter.
  *
- * Diqqat: bu limiter jarayon xotirasida yashaydi. Vercel kabi serverless
+ * Diqqat: limiter jarayon xotirasida yashaydi. Vercel kabi serverless
  * muhitda har bir instans o'z hisobini yuritadi, ya'ni bu qat'iy kafolat emas -
- * faqat bitta foydalanuvchi bir instansni bosib ketishidan himoya. Qat'iy limit
- * kerak bo'lsa Redis (masalan Upstash) ga o'tkazing.
+ * faqat bitta manba bir instansni bosib ketishidan himoya. Qat'iy limit kerak
+ * bo'lsa Redis (masalan Upstash) ga o'tkazing.
  */
 
 interface Bucket {
@@ -12,37 +12,58 @@ interface Bucket {
   updatedAt: number;
 }
 
-const CAPACITY = 12; // ketma-ket nechta so'rov qilish mumkin
-const REFILL_PER_SECOND = 12 / 60; // daqiqasiga 12 ta so'rov
-const MAX_BUCKETS = 5000;
-
-const buckets = new Map<string, Bucket>();
-
-export function takeToken(key: string): boolean {
-  const now = Date.now();
-  const bucket = buckets.get(key) ?? { tokens: CAPACITY, updatedAt: now };
-
-  const elapsedSeconds = (now - bucket.updatedAt) / 1000;
-  bucket.tokens = Math.min(
-    CAPACITY,
-    bucket.tokens + elapsedSeconds * REFILL_PER_SECOND,
-  );
-  bucket.updatedAt = now;
-
-  if (bucket.tokens < 1) {
-    buckets.set(key, bucket);
-    return false;
-  }
-
-  bucket.tokens -= 1;
-  buckets.set(key, bucket);
-
-  if (buckets.size > MAX_BUCKETS) evictStale(now);
-  return true;
+export interface Limiter {
+  /** Ruxsat bo'lsa true qaytaradi va bitta token yechadi. */
+  take(key: string): boolean;
+  /** Kalitda nechta so'rov qolganini ko'rsatadi (token yechmaydi). */
+  remaining(key: string): number;
 }
 
-function evictStale(now: number): void {
-  for (const [key, bucket] of buckets) {
-    if (now - bucket.updatedAt > 10 * 60 * 1000) buckets.delete(key);
+const MAX_BUCKETS = 5000;
+
+export function createLimiter(options: {
+  /** Ketma-ket nechta so'rov qilish mumkin. */
+  capacity: number;
+  /** Shu vaqt ichida to'liq tiklanadi (sekund). */
+  windowSeconds: number;
+}): Limiter {
+  const { capacity, windowSeconds } = options;
+  const refillPerSecond = capacity / windowSeconds;
+  const buckets = new Map<string, Bucket>();
+
+  function refill(key: string, now: number): Bucket {
+    const bucket = buckets.get(key) ?? { tokens: capacity, updatedAt: now };
+    const elapsed = (now - bucket.updatedAt) / 1000;
+    bucket.tokens = Math.min(capacity, bucket.tokens + elapsed * refillPerSecond);
+    bucket.updatedAt = now;
+    return bucket;
   }
+
+  return {
+    take(key) {
+      const now = Date.now();
+      const bucket = refill(key, now);
+
+      if (bucket.tokens < 1) {
+        buckets.set(key, bucket);
+        return false;
+      }
+
+      bucket.tokens -= 1;
+      buckets.set(key, bucket);
+
+      if (buckets.size > MAX_BUCKETS) {
+        for (const [otherKey, other] of buckets) {
+          if (now - other.updatedAt > windowSeconds * 1000) {
+            buckets.delete(otherKey);
+          }
+        }
+      }
+      return true;
+    },
+
+    remaining(key) {
+      return Math.floor(refill(key, Date.now()).tokens);
+    },
+  };
 }

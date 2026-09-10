@@ -25,6 +25,8 @@ npm run dev
 | `TELEGRAM_BOT_TOKEN` | Productionda ha | @BotFather beradi. Dev rejimida bo'sh qolsa, brauzerdan Telegramsiz sinash mumkin |
 | `ANTHROPIC_MODEL` | Yo'q | Default `claude-opus-5`. Arzonroq sinov uchun `claude-sonnet-5` yoki `claude-haiku-4-5` |
 | `ANTHROPIC_EFFORT` | Yo'q | `low` / `medium` / `high`, default `medium` |
+| `PUBLIC_API_KEY` | Yo'q | Ochiq API kaliti. Bo'sh bo'lsa faqat kalitsiz rejim (soatiga 3 so'rov) |
+| `PUBLIC_API_MODEL` | Yo'q | Ochiq API uchun alohida model. Bo'sh bo'lsa `ANTHROPIC_MODEL` |
 
 Brauzerda `http://localhost:3000` ni oching. Telegramsiz ham chat ishlaydi
 (dev rejimida tekshiruv o'chirilgan).
@@ -39,25 +41,64 @@ Brauzerda `http://localhost:3000` ni oching. Telegramsiz ham chat ishlaydi
 4. Lokalda Telegram ichida sinash uchun tunnel kerak: `npx localtunnel --port 3000`
    yoki `ngrok http 3000`, keyin o'sha HTTPS manzilni BotFather ga bering.
 
+## Ochiq API
+
+Sayt Telegramdan tashqarida ham ishlatiladigan ochiq API beradi. To'liq hujjat
+va jonli sinov formasi: **https://jasur-math.vercel.app/api**
+
+| Metod | Yo'l | Tavsif |
+| --- | --- | --- |
+| GET | `/api/health` | Xizmat holati, cheklovsiz |
+| POST | `/api/solve` | Masalani yechadi, JSON qaytaradi |
+| GET | `/api/solve` | Endpoint haqida qisqa ma'lumot |
+| POST | `/api/chat` | Mini App ichki endpointi (Telegram imzosi kerak) |
+
+```bash
+curl -X POST https://jasur-math.vercel.app/api/solve \
+  -H "Content-Type: application/json" \
+  -d '{"savol": "2x + 5 = 13"}'
+```
+
+```json
+{
+  "savol": "2x + 5 = 13",
+  "mavzu": "chiziqli tenglama",
+  "javob": "x = 4",
+  "yechim": ["Ikkala tomondan 5 ni ayiramiz: 2x = 8", "..."],
+  "model": "claude-opus-5"
+}
+```
+
+Javob tuzilishi Claude'ning **structured outputs** imkoniyati bilan
+kafolatlanadi (`zodOutputFormat`) - matn tahlil qilinmaydi, sxema modelga
+majburlanadi.
+
+**Cheklovlar:** kalitsiz - IP bo'yicha soatiga 3 so'rov; `X-API-Key`
+sarlavhasi bilan - soatiga 100. Har javobda `X-RateLimit-Remaining` qaytadi.
+
 ## Fayl tuzilmasi
 
 ```
 src/
 ├── app/
-│   ├── api/chat/route.ts    Claude ga so'rov, oqim (NDJSON) qaytaradi
+│   ├── api/page.tsx         Ochiq API hujjati (/api)
+│   ├── api/chat/route.ts    Mini App endpointi, oqim (NDJSON) qaytaradi
+│   ├── api/solve/route.ts   Ochiq API: masala -> tuzilgan JSON
+│   ├── api/health/route.ts  Xizmat holati
 │   ├── layout.tsx           Telegram WebApp SDK skripti shu yerda ulanadi
 │   ├── page.tsx
 │   └── globals.css          Telegram mavzu ranglariga moslashgan uslublar
 ├── components/
 │   ├── Chat.tsx             Butun chat mantiqi (holat, oqim, tugmalar)
-│   └── MessageBubble.tsx    Markdown render
+│   ├── MessageBubble.tsx    Markdown render
+│   └── ApiTester.tsx        /api sahifasidagi jonli sinov formasi
 └── lib/
     ├── prompt.ts            System prompt (o'qituvchi + Mini App qoidalari)
     ├── telegram.ts          initData ni HMAC bilan tekshirish (server)
     ├── telegram-client.ts   window.Telegram.WebApp bilan ishlash (klient)
     ├── chat-client.ts       Oqimni o'qish (fetch + ReadableStream)
     ├── options.ts           [[VARIANTLAR: ...]] ni tugmalarga ajratish
-    ├── rate-limit.ts        Oddiy so'rov cheklovi
+    ├── rate-limit.ts        Token-bucket cheklov (createLimiter)
     └── types.ts             Umumiy tiplar va limitlar
 ```
 

@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest } from "next/server";
 
 import { SYSTEM_PROMPT } from "@/lib/prompt";
-import { takeToken } from "@/lib/rate-limit";
+import { createLimiter } from "@/lib/rate-limit";
 import { verifyInitData } from "@/lib/telegram";
 import {
   MAX_HISTORY_MESSAGES,
@@ -53,6 +53,9 @@ const SYSTEM_BLOCKS = [
 const client = new Anthropic();
 const encoder = new TextEncoder();
 
+/** Bitta o'quvchi uchun daqiqasiga 12 ta so'rov. */
+const limiter = createLimiter({ capacity: 12, windowSeconds: 60 });
+
 /**
  * Qaysi versiya productionda turganini bilish uchun belgi.
  * Tekshirish: curl https://jasur-math.vercel.app/api/chat
@@ -77,7 +80,7 @@ export async function POST(request: NextRequest) {
   const auth = authenticate(parsed.initData);
   if (!auth.ok) return errorResponse(401, auth.message);
 
-  if (!takeToken(auth.userKey)) {
+  if (!limiter.take(auth.userKey)) {
     return errorResponse(
       429,
       "Biroz sekinroq :) Bir daqiqadan keyin yana urinib ko'r.",
