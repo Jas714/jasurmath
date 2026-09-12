@@ -1,8 +1,6 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { NextRequest } from "next/server";
-import { z } from "zod";
 
+import { describeModelError, modelName, solve } from "@/lib/model";
 import { createLimiter } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -20,9 +18,6 @@ export const maxDuration = 60;
  * Kalit bilan (X-API-Key sarlavhasi): soatiga 100 ta.
  */
 
-const MODEL =
-  process.env.PUBLIC_API_MODEL ?? process.env.ANTHROPIC_MODEL ?? "claude-opus-5";
-
 const ANON_LIMIT = 3;
 const KEY_LIMIT = 100;
 const WINDOW_SECONDS = 3600;
@@ -36,21 +31,6 @@ const anonLimiter = createLimiter({
 const keyLimiter = createLimiter({
   capacity: KEY_LIMIT,
   windowSeconds: WINDOW_SECONDS,
-});
-
-const client = new Anthropic();
-
-const JavobSchema = z.object({
-  matematikami: z
-    .boolean()
-    .describe("Savol matematikaga oid bo'lsa true, aks holda false"),
-  mavzu: z
-    .string()
-    .describe("Masalaning mavzusi, masalan: chiziqli tenglama, foiz, geometriya"),
-  javob: z.string().describe("Yakuniy javob, qisqa. Masalan: x = 4"),
-  yechim: z
-    .array(z.string())
-    .describe("Yechim bosqichlari, har biri bitta qisqa qator"),
 });
 
 const SYSTEM = `Sen matematik masalalarni yechadigan aniq va ishonchli yordamchisan.
@@ -103,7 +83,9 @@ export async function POST(request: NextRequest) {
 
   // --- 2. Cheklov ---
   const limiter = hasValidKey ? keyLimiter : anonLimiter;
-  const limitKey = hasValidKey ? `key:${providedKey}` : `ip:${clientIp(request)}`;
+  const limitKey = hasValidKey
+    ? `key:${providedKey}`
+    : `ip:${clientIp(request)}`;
   const limit = hasValidKey ? KEY_LIMIT : ANON_LIMIT;
 
   if (!limiter.take(limitKey)) {
@@ -129,7 +111,11 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json();
   } catch {
-    return json({ xato: "So'rov tanasi JSON bo'lishi kerak." }, 400, rateHeaders);
+    return json(
+      { xato: "So'rov tanasi JSON bo'lishi kerak." },
+      400,
+      rateHeaders,
+    );
   }
 
   const raw =
@@ -138,7 +124,7 @@ export async function POST(request: NextRequest) {
 
   if (typeof raw !== "string" || !raw.trim()) {
     return json(
-      { xato: "\"savol\" maydoni bo'sh bo'lmagan matn bo'lishi kerak." },
+      { xato: '"savol" maydoni bo\'sh bo\'lmagan matn bo\'lishi kerak.' },
       400,
       rateHeaders,
     );
@@ -146,28 +132,13 @@ export async function POST(request: NextRequest) {
 
   const savol = raw.trim().slice(0, MAX_QUESTION_CHARS);
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return json({ xato: "Server sozlanmagan." }, 500, rateHeaders);
-  }
-
   // --- 4. Modeldan tuzilgan javob olish ---
   try {
-    const response = await client.messages.parse({
-      model: MODEL,
-      max_tokens: 4000,
-      system: SYSTEM,
-      messages: [{ role: "user", content: savol }],
-      output_config: { format: zodOutputFormat(JavobSchema) },
-    });
+    const result = await solve({ system: SYSTEM, savol });
 
-    const parsed = response.parsed_output;
-    if (!parsed) {
-      return json({ xato: "Javobni tahlil qilib bo'lmadi." }, 502, rateHeaders);
-    }
-
-    if (!parsed.matematikami) {
+    if (!result.matematikami) {
       return json(
-        { xato: "Bu savol matematikaga oid emas.", izoh: parsed.javob },
+        { xato: "Bu savol matematikaga oid emas.", izoh: result.javob },
         400,
         rateHeaders,
       );
@@ -176,35 +147,18 @@ export async function POST(request: NextRequest) {
     return json(
       {
         savol,
-        mavzu: parsed.mavzu,
-        javob: parsed.javob,
-        yechim: parsed.yechim,
-        model: response.model,
+        mavzu: result.mavzu,
+        javob: result.javob,
+        yechim: result.yechim,
+        model: modelName(),
       },
       200,
       rateHeaders,
     );
   } catch (error) {
-    const { status, message } = describeError(error);
+    const { status, message } = describeModelError(error);
     return json({ xato: message }, status, rateHeaders);
   }
-}
-
-function describeError(error: unknown): { status: number; message: string } {
-  if (error instanceof Anthropic.RateLimitError) {
-    return { status: 503, message: "Xizmat band. Keyinroq urinib ko'ring." };
-  }
-  if (error instanceof Anthropic.AuthenticationError) {
-    return { status: 500, message: "Server kaliti noto'g'ri." };
-  }
-  if (error instanceof Anthropic.APIConnectionError) {
-    return { status: 504, message: "Model bilan aloqa uzildi." };
-  }
-  if (error instanceof Anthropic.APIError) {
-    return { status: 502, message: `Model xatosi (${error.status ?? "?"}).` };
-  }
-  console.error("/api/solve kutilmagan xato:", error);
-  return { status: 500, message: "Kutilmagan xato." };
 }
 
 function clientIp(request: NextRequest): string {

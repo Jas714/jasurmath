@@ -22,7 +22,7 @@ const RESPONSE = `{
     "Ikkala tomonni 2 ga bo'lamiz: x = 4",
     "Tekshiramiz: 2 * 4 + 5 = 13"
   ],
-  "model": "claude-opus-5"
+  "model": "gemini-2.5-flash"
 }`;
 
 const JS_EXAMPLE = `const res = await fetch("${BASE_URL}/api/solve", {
@@ -44,8 +44,8 @@ export default function ApiDocsPage() {
     <main className="docs">
       <h1>JasurMath API</h1>
       <p className="lead">
-        Matematik masalani yuboring — tuzilgan JSON javob oling. Javobni Claude{" "}
-        <code>claude-opus-5</code> modeli tayyorlaydi.
+        Matematik masalani yuboring — tuzilgan JSON javob oling. Javobni Google{" "}
+        <code>gemini-2.5-flash</code> modeli tayyorlaydi.
       </p>
 
       <h2>Sinab ko&apos;ring</h2>
@@ -235,7 +235,7 @@ export default function ApiDocsPage() {
         <a href="https://t.me/Jasur_Math_bot">@Jasur_Math_bot</a>.
       </p>
       <p>
-        Texnologiyalar: Next.js 15 (App Router), TypeScript, Claude API
+        Texnologiyalar: Next.js 15 (App Router), TypeScript, Google Gemini API
         (structured outputs), Vercel.
       </p>
     </main>

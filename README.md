@@ -1,12 +1,12 @@
 # JasurMath
 
 Matematikani noldan o'rgatadigan AI-o'qituvchi. Telegram Mini App ko'rinishida
-ishlaydi, Claude (`claude-opus-5`) modeliga tayanadi.
+ishlaydi, Google Gemini (`gemini-2.5-flash`) modeliga tayanadi.
 
 ## Texnologiyalar
 
 - **Next.js 15** (App Router) + **TypeScript** — frontend va backend bitta loyihada
-- **@anthropic-ai/sdk** — Claude bilan oqim (streaming) rejimida ishlaydi
+- **@google/genai** — Gemini bilan oqim (streaming) rejimida ishlaydi
 - API kaliti faqat serverda (`/api/chat` route handler) — brauzerga hech qachon chiqmaydi
 
 ## Ishga tushirish
@@ -21,12 +21,10 @@ npm run dev
 
 | O'zgaruvchi | Kerakmi | Izoh |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | Ha | https://console.anthropic.com dan olinadi (API pullik, minimal to'lov $5) |
+| `GEMINI_API_KEY` | Ha | https://aistudio.google.com/apikey dan bepul olinadi |
 | `TELEGRAM_BOT_TOKEN` | Productionda ha | @BotFather beradi. Dev rejimida bo'sh qolsa, brauzerdan Telegramsiz sinash mumkin |
-| `ANTHROPIC_MODEL` | Yo'q | Default `claude-opus-5`. Arzonroq sinov uchun `claude-sonnet-5` yoki `claude-haiku-4-5` |
-| `ANTHROPIC_EFFORT` | Yo'q | `low` / `medium` / `high`, default `medium` |
+| `GEMINI_MODEL` | Yo'q | Default `gemini-2.5-flash` |
 | `PUBLIC_API_KEY` | Yo'q | Ochiq API kaliti. Bo'sh bo'lsa faqat kalitsiz rejim (soatiga 3 so'rov) |
-| `PUBLIC_API_MODEL` | Yo'q | Ochiq API uchun alohida model. Bo'sh bo'lsa `ANTHROPIC_MODEL` |
 
 Brauzerda `http://localhost:3000` ni oching. Telegramsiz ham chat ishlaydi
 (dev rejimida tekshiruv o'chirilgan).
@@ -34,7 +32,7 @@ Brauzerda `http://localhost:3000` ni oching. Telegramsiz ham chat ishlaydi
 ## Telegramga ulash
 
 1. [@BotFather](https://t.me/BotFather) da bot yarating, tokenni `.env.local` ga yozing.
-2. Loyihani deploy qiling (Vercel: `vercel` — `ANTHROPIC_API_KEY` va
+2. Loyihani deploy qiling (Vercel: `vercel` — `GEMINI_API_KEY` va
    `TELEGRAM_BOT_TOKEN` ni Environment Variables ga qo'shing).
 3. BotFather da: `/newapp` → botni tanlang → Mini App URL sifatida deploy
    qilingan manzilni bering (masalan `https://jasurmath.vercel.app`).
@@ -65,12 +63,12 @@ curl -X POST https://jasur-math.vercel.app/api/solve \
   "mavzu": "chiziqli tenglama",
   "javob": "x = 4",
   "yechim": ["Ikkala tomondan 5 ni ayiramiz: 2x = 8", "..."],
-  "model": "claude-opus-5"
+  "model": "gemini-2.5-flash"
 }
 ```
 
-Javob tuzilishi Claude'ning **structured outputs** imkoniyati bilan
-kafolatlanadi (`zodOutputFormat`) - matn tahlil qilinmaydi, sxema modelga
+Javob tuzilishi Gemini'ning **structured output** imkoniyati bilan
+kafolatlanadi (`responseSchema`) - matn tahlil qilinmaydi, sxema modelga
 majburlanadi.
 
 **Cheklovlar:** kalitsiz - IP bo'yicha soatiga 3 so'rov; `X-API-Key`
@@ -93,6 +91,7 @@ src/
 │   ├── MessageBubble.tsx    Markdown render
 │   └── ApiTester.tsx        /api sahifasidagi jonli sinov formasi
 └── lib/
+    ├── model.ts             Gemini bilan ishlash (chat oqimi + tuzilgan javob)
     ├── prompt.ts            System prompt (o'qituvchi + Mini App qoidalari)
     ├── telegram.ts          initData ni HMAC bilan tekshirish (server)
     ├── telegram-client.ts   window.Telegram.WebApp bilan ishlash (klient)
@@ -130,16 +129,16 @@ HMAC-SHA256 orqali tekshiradi (`src/lib/telegram.ts`), 24 soatdan eski
 ma'lumotni rad etadi va foydalanuvchi id bo'yicha so'rovlarni cheklaydi.
 `TELEGRAM_BOT_TOKEN` productionda majburiy — u bo'lmasa route 500 qaytaradi.
 
-## Claude sozlamalari (`src/app/api/chat/route.ts`)
+## Model sozlamalari (`src/lib/model.ts`)
+
+Modelga so'rov yuboradigan butun mantiq shu bitta faylda. Provayder almashsa,
+faqat shu fayl o'zgaradi - route'lar tegilmaydi.
 
 | Sozlama | Qiymat | Nega |
 | --- | --- | --- |
-| `model` | `claude-opus-5` | Matematik aniqlik uchun eng kuchli variant. `.env.local` da `ANTHROPIC_MODEL` orqali almashtiriladi |
-| `thinking` | `adaptive` | Model masalani yechishdan oldin o'ylab oladi |
-| `output_config.effort` | `medium` | Chat uchun tezlik/narx muvozanati. `ANTHROPIC_EFFORT=high` bilan ko'tariladi |
-| `max_tokens` | 16000 | Uzun reja yoki bosqichli yechim kesilib qolmasin |
-| `cache_control` | `ephemeral` | System prompt uzun va o'zgarmas — keshdan o'qiladi, arzonroq |
-| `fallbacks` | `claude-opus-4-8` | Model so'rovni rad etsa, zaxira modelda qayta ishlanadi. Kerak bo'lmasa o'chirsa bo'ladi |
+| `model` | `gemini-2.5-flash` | Bepul tarifda ishlaydi, matematika uchun yetarli. `GEMINI_MODEL` bilan almashtiriladi |
+| `maxOutputTokens` | 8192 (chat), 4096 (solve) | Uzun reja yoki bosqichli yechim kesilib qolmasin |
+| `responseSchema` | `/api/solve` da | Javob doim bir xil JSON shaklida keladi |
 
 ## Tekshiruv
 
@@ -151,6 +150,6 @@ npm run build       # production build
 ## Keyingi qadamlar uchun g'oyalar
 
 - Reja va o'zlashtirishni bazada saqlash (hozir faqat suhbat tarixi bor)
-- Rasm yuborish (foydalanuvchi masala rasmini tashlasin) — Claude vision qo'llab-quvvatlaydi
+- Rasm yuborish (foydalanuvchi masala rasmini tashlasin) — Gemini buni qo'llab-quvvatlaydi
 - Test rejimi: N ta savol, avtomatik ball va xatolar tahlili
 - Redis (Upstash) bilan jiddiy rate limiting

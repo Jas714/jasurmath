@@ -1,6 +1,6 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest } from "next/server";
 
+import { describeModelError, streamChat } from "@/lib/model";
 import { SYSTEM_PROMPT } from "@/lib/prompt";
 import { createLimiter } from "@/lib/rate-limit";
 import { verifyInitData } from "@/lib/telegram";
@@ -16,51 +16,15 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Model va "effort" ni .env.local orqali almashtirish mumkin.
- * Sinov paytida arzonroq model bilan ishlab, keyin productionda
- * claude-opus-5 ga qaytish uchun qulay.
+ * Qaysi versiya productionda turganini bilish uchun belgi.
+ * Tekshirish: curl https://jasur-math.vercel.app/api/chat
  */
-const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-opus-5";
-const EFFORT = (process.env.ANTHROPIC_EFFORT ?? "medium") as
-  | "low"
-  | "medium"
-  | "high";
+const BUILD_MARKER = "2026-09-12-gemini";
 
-/**
- * Adaptive thinking, "effort" va zaxira model (fallback) faqat yangi
- * modellarda ishlaydi. Eski modelda (masalan claude-haiku-4-5) bu
- * parametrlar 400 xato qaytaradi - shuning uchun ular tashlab yuboriladi.
- */
-const ADVANCED_MODELS = new Set([
-  "claude-fable-5",
-  "claude-opus-5",
-  "claude-opus-4-8",
-  "claude-opus-4-7",
-  "claude-opus-4-6",
-  "claude-sonnet-5",
-  "claude-sonnet-4-6",
-]);
-
-// System prompt o'zgarmaydi -> keshlanadi (arzonroq va tezroq).
-const SYSTEM_BLOCKS = [
-  {
-    type: "text" as const,
-    text: SYSTEM_PROMPT,
-    cache_control: { type: "ephemeral" as const },
-  },
-];
-
-const client = new Anthropic();
 const encoder = new TextEncoder();
 
 /** Bitta o'quvchi uchun daqiqasiga 12 ta so'rov. */
 const limiter = createLimiter({ capacity: 12, windowSeconds: 60 });
-
-/**
- * Qaysi versiya productionda turganini bilish uchun belgi.
- * Tekshirish: curl https://jasur-math.vercel.app/api/chat
- */
-const BUILD_MARKER = "2026-09-12-ochiq-api";
 
 export function GET() {
   return Response.json({ app: "JasurMath", version: BUILD_MARKER });
@@ -87,66 +51,33 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return errorResponse(
-      500,
-      "Server sozlanmagan: ANTHROPIC_API_KEY topilmadi.",
-    );
-  }
-
-  const baseParams = {
-    model: MODEL,
-    max_tokens: 16000,
-    system: SYSTEM_BLOCKS,
-    messages: parsed.messages,
-  };
-
-  const stream = ADVANCED_MODELS.has(MODEL)
-    ? client.beta.messages.stream({
-        ...baseParams,
-        // Model masalani yechishdan oldin o'ylab oladi - matematikada muhim.
-        thinking: { type: "adaptive" },
-        // Sifat yetarli bo'lmasa ANTHROPIC_EFFORT=high qiling.
-        output_config: { effort: EFFORT },
-        // Model so'rovni rad etsa, shu chaqiruv ichida zaxira modelda
-        // qayta ishlanadi. Kerak bo'lmasa shu ikki qatorni o'chiring.
-        betas: ["server-side-fallback-2026-06-01"],
-        fallbacks: [{ model: "claude-opus-4-8" }],
-      })
-    : client.beta.messages.stream(baseParams);
-
   const responseBody = new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (event: StreamEvent) =>
         controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
 
       try {
-        for await (const event of stream) {
-          if (
-            event.type === "content_block_delta" &&
-            event.delta.type === "text_delta"
-          ) {
-            send({ type: "text", text: event.delta.text });
-          }
+        let gotText = false;
+        for await (const chunk of streamChat({
+          system: SYSTEM_PROMPT,
+          messages: parsed.messages,
+        })) {
+          gotText = true;
+          send({ type: "text", text: chunk });
         }
 
-        const final = await stream.finalMessage();
-        if (final.stop_reason === "refusal") {
+        if (!gotText) {
           send({
             type: "error",
-            message:
-              "Bu savolga javob bera olmadim. Iltimos, matematikaga oid savol ber.",
+            message: "Model javob bermadi. Qayta urinib ko'r.",
           });
         }
         send({ type: "done" });
       } catch (error) {
-        send({ type: "error", message: describeError(error) });
+        send({ type: "error", message: describeModelError(error).message });
       } finally {
         controller.close();
       }
-    },
-    cancel() {
-      stream.abort();
     },
   });
 
@@ -191,13 +122,16 @@ function parseBody(body: unknown): ParsedBody {
   // Faqat oxirgi N ta xabar yuboriladi - tarix cheksiz o'sib ketmasin.
   const trimmedHistory = cleaned.slice(-MAX_HISTORY_MESSAGES);
 
-  // Claude uchun birinchi xabar "user" bo'lishi shart.
+  // Birinchi xabar "user" bo'lishi kerak.
   while (trimmedHistory.length > 0 && trimmedHistory[0].role !== "user") {
     trimmedHistory.shift();
   }
 
   if (trimmedHistory.length === 0 || trimmedHistory.at(-1)?.role !== "user") {
-    return { ok: false, message: "Oxirgi xabar foydalanuvchidan bo'lishi kerak." };
+    return {
+      ok: false,
+      message: "Oxirgi xabar foydalanuvchidan bo'lishi kerak.",
+    };
   }
 
   return {
@@ -207,9 +141,7 @@ function parseBody(body: unknown): ParsedBody {
   };
 }
 
-type AuthResult =
-  | { ok: true; userKey: string }
-  | { ok: false; message: string };
+type AuthResult = { ok: true; userKey: string } | { ok: false; message: string };
 
 function authenticate(initData: string): AuthResult {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -253,46 +185,6 @@ function fieldNames(initData: string): string {
       .sort()
       .join(", ") || "yo'q"
   );
-}
-
-function describeError(error: unknown): string {
-  if (error instanceof Anthropic.NotFoundError) {
-    return "Model topilmadi. Server sozlamalarini tekshiring.";
-  }
-  /*
-   * Kredit tugashi 400 (BadRequestError) bo'lib keladi va oddiy
-   * "keyinroq urinib ko'r" xabari bu yerda CHALG'ITUVCHI bo'ladi -
-   * kutish bilan kredit tiklanmaydi. Shuning uchun alohida ajratamiz.
-   */
-  if (error instanceof Anthropic.BadRequestError) {
-    if (/credit balance is too low/i.test(error.message)) {
-      return "Hisobdagi mablag' tugadi. Egasiga xabar bering - console.anthropic.com saytida kredit to'ldirish kerak.";
-    }
-    return "So'rov qabul qilinmadi. Savolni qisqaroq qilib qayta yozing.";
-  }
-  if (error instanceof Anthropic.RateLimitError) {
-    return "Hozir yuklama katta. Bir necha soniyadan keyin qayta urinib ko'r.";
-  }
-  if (error instanceof Anthropic.AuthenticationError) {
-    return "API kaliti noto'g'ri yoki eskirgan.";
-  }
-  // APIConnectionError ham APIError dan meros oladi - shuning uchun oldinroq.
-  if (error instanceof Anthropic.APIConnectionError) {
-    return "Internet bilan aloqa uzildi. Qayta urinib ko'r.";
-  }
-  if (error instanceof Anthropic.APIError) {
-    // 400 ning eng ko'p uchraydigan sababi - balans tugashi. Uni alohida
-    // ajratamiz, aks holda "Xizmat xatosi (400)" hech narsa tushuntirmaydi.
-    const detail = String(error.message ?? "");
-    if (detail.includes("credit balance")) {
-      console.error("ANTHROPIC BALANSI TUGAGAN - console.anthropic.com da to'ldiring");
-      return "Xizmat vaqtincha to'xtadi. Ilova egasiga xabar bering.";
-    }
-    console.error(`Anthropic xatosi ${error.status ?? "?"}: ${detail}`);
-    return `Xizmat xatosi (${error.status ?? "?"}). Keyinroq urinib ko'r.`;
-  }
-  console.error("Kutilmagan xato:", error);
-  return "Kutilmagan xato yuz berdi. Qayta urinib ko'r.";
 }
 
 function errorResponse(status: number, message: string): Response {
