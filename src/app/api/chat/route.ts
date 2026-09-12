@@ -60,7 +60,7 @@ const limiter = createLimiter({ capacity: 12, windowSeconds: 60 });
  * Qaysi versiya productionda turganini bilish uchun belgi.
  * Tekshirish: curl https://jasur-math.vercel.app/api/chat
  */
-const BUILD_MARKER = "2026-09-04-initdata-2";
+const BUILD_MARKER = "2026-09-12-ochiq-api";
 
 export function GET() {
   return Response.json({ app: "JasurMath", version: BUILD_MARKER });
