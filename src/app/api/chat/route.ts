@@ -259,6 +259,17 @@ function describeError(error: unknown): string {
   if (error instanceof Anthropic.NotFoundError) {
     return "Model topilmadi. Server sozlamalarini tekshiring.";
   }
+  /*
+   * Kredit tugashi 400 (BadRequestError) bo'lib keladi va oddiy
+   * "keyinroq urinib ko'r" xabari bu yerda CHALG'ITUVCHI bo'ladi -
+   * kutish bilan kredit tiklanmaydi. Shuning uchun alohida ajratamiz.
+   */
+  if (error instanceof Anthropic.BadRequestError) {
+    if (/credit balance is too low/i.test(error.message)) {
+      return "Hisobdagi mablag' tugadi. Egasiga xabar bering - console.anthropic.com saytida kredit to'ldirish kerak.";
+    }
+    return "So'rov qabul qilinmadi. Savolni qisqaroq qilib qayta yozing.";
+  }
   if (error instanceof Anthropic.RateLimitError) {
     return "Hozir yuklama katta. Bir necha soniyadan keyin qayta urinib ko'r.";
   }
@@ -270,6 +281,14 @@ function describeError(error: unknown): string {
     return "Internet bilan aloqa uzildi. Qayta urinib ko'r.";
   }
   if (error instanceof Anthropic.APIError) {
+    // 400 ning eng ko'p uchraydigan sababi - balans tugashi. Uni alohida
+    // ajratamiz, aks holda "Xizmat xatosi (400)" hech narsa tushuntirmaydi.
+    const detail = String(error.message ?? "");
+    if (detail.includes("credit balance")) {
+      console.error("ANTHROPIC BALANSI TUGAGAN - console.anthropic.com da to'ldiring");
+      return "Xizmat vaqtincha to'xtadi. Ilova egasiga xabar bering.";
+    }
+    console.error(`Anthropic xatosi ${error.status ?? "?"}: ${detail}`);
     return `Xizmat xatosi (${error.status ?? "?"}). Keyinroq urinib ko'r.`;
   }
   console.error("Kutilmagan xato:", error);
