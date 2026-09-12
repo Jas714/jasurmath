@@ -1,7 +1,7 @@
 # JasurMath
 
 Matematikani noldan o'rgatadigan AI-o'qituvchi. Telegram Mini App ko'rinishida
-ishlaydi, Google Gemini (`gemini-2.5-flash`) modeliga tayanadi.
+ishlaydi, Google Gemini (`gemini-3.6-flash`) modeliga tayanadi.
 
 ## Texnologiyalar
 
@@ -23,7 +23,7 @@ npm run dev
 | --- | --- | --- |
 | `GEMINI_API_KEY` | Ha | https://aistudio.google.com/apikey dan bepul olinadi |
 | `TELEGRAM_BOT_TOKEN` | Productionda ha | @BotFather beradi. Dev rejimida bo'sh qolsa, brauzerdan Telegramsiz sinash mumkin |
-| `GEMINI_MODEL` | Yo'q | Default `gemini-2.5-flash` |
+| `GEMINI_MODEL` | Yo'q | Default `gemini-3.6-flash` |
 | `PUBLIC_API_KEY` | Yo'q | Ochiq API kaliti. Bo'sh bo'lsa faqat kalitsiz rejim (soatiga 3 so'rov) |
 
 Brauzerda `http://localhost:3000` ni oching. Telegramsiz ham chat ishlaydi
@@ -63,7 +63,7 @@ curl -X POST https://jasur-math.vercel.app/api/solve \
   "mavzu": "chiziqli tenglama",
   "javob": "x = 4",
   "yechim": ["Ikkala tomondan 5 ni ayiramiz: 2x = 8", "..."],
-  "model": "gemini-2.5-flash"
+  "model": "gemini-3.6-flash"
 }
 ```
 
@@ -136,7 +136,7 @@ faqat shu fayl o'zgaradi - route'lar tegilmaydi.
 
 | Sozlama | Qiymat | Nega |
 | --- | --- | --- |
-| `model` | `gemini-2.5-flash` | Bepul tarifda ishlaydi, matematika uchun yetarli. `GEMINI_MODEL` bilan almashtiriladi |
+| `model` | `gemini-3.6-flash` | Bepul tarifda ishlaydi, matematika uchun yetarli. `GEMINI_MODEL` bilan almashtiriladi |
 | `maxOutputTokens` | 8192 (chat), 4096 (solve) | Uzun reja yoki bosqichli yechim kesilib qolmasin |
 | `responseSchema` | `/api/solve` da | Javob doim bir xil JSON shaklida keladi |
 

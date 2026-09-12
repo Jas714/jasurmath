@@ -9,7 +9,7 @@ import type { ChatMessage } from "@/lib/types";
  * faqat shu fayl o'zgaradi - route'lar tegilmaydi.
  */
 
-const MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+const MODEL = process.env.GEMINI_MODEL ?? "gemini-3.6-flash";
 
 let cached: GoogleGenAI | null = null;
 
@@ -29,6 +29,30 @@ export class ModelError extends Error {
   }
 }
 
+/**
+ * Bepul tarifda Gemini vaqti-vaqti bilan 503 ("high demand") qaytaradi.
+ * Bu o'tkinchi holat, shuning uchun bir necha marta qayta urinamiz.
+ */
+const RETRY_DELAYS_MS = [700, 1800, 3500];
+
+async function withRetry<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      const status = (error as { status?: unknown })?.status;
+      const retriable = status === 503 || status === 500 || status === 502;
+      if (!retriable || attempt === RETRY_DELAYS_MS.length) break;
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+    }
+  }
+
+  throw lastError;
+}
+
 /** Bizning rollarni Gemini kutadigan ko'rinishga o'tkazadi. */
 function toContents(messages: ChatMessage[]) {
   return messages.map((message) => ({
@@ -43,15 +67,17 @@ export async function* streamChat(options: {
   messages: ChatMessage[];
   signal?: AbortSignal;
 }): AsyncGenerator<string> {
-  const stream = await client().models.generateContentStream({
-    model: MODEL,
-    contents: toContents(options.messages),
-    config: {
-      systemInstruction: options.system,
-      maxOutputTokens: 8192,
-      abortSignal: options.signal,
-    },
-  });
+  const stream = await withRetry(() =>
+    client().models.generateContentStream({
+      model: MODEL,
+      contents: toContents(options.messages),
+      config: {
+        systemInstruction: options.system,
+        maxOutputTokens: 8192,
+        abortSignal: options.signal,
+      },
+    }),
+  );
 
   for await (const chunk of stream) {
     const text = chunk.text;
@@ -71,39 +97,41 @@ export async function solve(options: {
   system: string;
   savol: string;
 }): Promise<SolveResult> {
-  const response = await client().models.generateContent({
-    model: MODEL,
-    contents: [{ role: "user", parts: [{ text: options.savol }] }],
-    config: {
-      systemInstruction: options.system,
-      maxOutputTokens: 4096,
-      // Sxema modelga majburlanadi - javob doim shu shaklda keladi.
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          matematikami: {
-            type: Type.BOOLEAN,
-            description: "Savol matematikaga oid bo'lsa true",
+  const response = await withRetry(() =>
+    client().models.generateContent({
+      model: MODEL,
+      contents: [{ role: "user", parts: [{ text: options.savol }] }],
+      config: {
+        systemInstruction: options.system,
+        maxOutputTokens: 4096,
+        // Sxema modelga majburlanadi - javob doim shu shaklda keladi.
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            matematikami: {
+              type: Type.BOOLEAN,
+              description: "Savol matematikaga oid bo'lsa true",
+            },
+            mavzu: {
+              type: Type.STRING,
+              description: "Masala mavzusi, masalan: chiziqli tenglama",
+            },
+            javob: {
+              type: Type.STRING,
+              description: "Yakuniy javob, qisqa. Masalan: x = 4",
+            },
+            yechim: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "Yechim bosqichlari, har biri bitta qator",
+            },
           },
-          mavzu: {
-            type: Type.STRING,
-            description: "Masala mavzusi, masalan: chiziqli tenglama",
-          },
-          javob: {
-            type: Type.STRING,
-            description: "Yakuniy javob, qisqa. Masalan: x = 4",
-          },
-          yechim: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-            description: "Yechim bosqichlari, har biri bitta qator",
-          },
+          required: ["matematikami", "mavzu", "javob", "yechim"],
         },
-        required: ["matematikami", "mavzu", "javob", "yechim"],
       },
-    },
-  });
+    }),
+  );
 
   const raw = response.text;
   if (!raw) throw new ModelError("Modeldan bo'sh javob keldi.", 502);
@@ -163,7 +191,10 @@ export function describeModelError(error: unknown): {
       return { status: 500, message: "Server kaliti noto'g'ri yoki eskirgan." };
     }
     if (status >= 500) {
-      return { status: 502, message: "Model vaqtincha ishlamayapti." };
+      return {
+        status: 503,
+        message: "Model hozir band. Bir daqiqadan keyin urinib ko'ring.",
+      };
     }
     return { status: 502, message: `Model xatosi (${status}).` };
   }

@@ -22,7 +22,7 @@ const RESPONSE = `{
     "Ikkala tomonni 2 ga bo'lamiz: x = 4",
     "Tekshiramiz: 2 * 4 + 5 = 13"
   ],
-  "model": "gemini-2.5-flash"
+  "model": "gemini-3.6-flash"
 }`;
 
 const JS_EXAMPLE = `const res = await fetch("${BASE_URL}/api/solve", {
@@ -45,7 +45,7 @@ export default function ApiDocsPage() {
       <h1>JasurMath API</h1>
       <p className="lead">
         Matematik masalani yuboring — tuzilgan JSON javob oling. Javobni Google{" "}
-        <code>gemini-2.5-flash</code> modeli tayyorlaydi.
+        <code>gemini-3.6-flash</code> modeli tayyorlaydi.
       </p>
 
       <h2>Sinab ko&apos;ring</h2>
